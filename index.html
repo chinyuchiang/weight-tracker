@@ -766,6 +766,35 @@
     @media (max-width: 600px) {
       .checkin-grid { grid-template-columns: repeat(2, 1fr); }
     }
+
+    /* ── Tabs ── */
+    .tab-nav {
+      display: flex;
+      gap: 4px;
+      background: var(--white);
+      border-radius: var(--radius);
+      padding: 4px;
+      margin-bottom: 20px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-sm);
+    }
+    .tab-btn {
+      flex: 1;
+      height: 44px;
+      border: none;
+      border-radius: var(--radius-sm);
+      background: transparent;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--ink-soft);
+      transition: all 0.2s;
+      font-family: 'DM Sans', sans-serif;
+    }
+    .tab-btn.active { background: var(--mint); color: #fff; box-shadow: 0 2px 8px rgba(0,201,167,0.3); }
+    .tab-btn:not(.active):hover { background: var(--mist); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
   </style>
 </head>
 <body>
@@ -823,6 +852,7 @@ let checkinDate = '';
 let checkinChart = null;
 let checkinChartRange = 30;
 let historyPage = 0;
+let activeTab = 'register';
 
 // ── Utilities ──
 function today() {
@@ -963,8 +993,20 @@ function renderCheckinChart() {
   cutoff.setDate(cutoff.getDate() - checkinChartRange + 1);
   const cutoffStr = cutoff.toISOString().split('T')[0];
 
+
+  const activeUsers = USERS.filter(name => {
+    const userData = checkinsData[name] || {};
+    return Object.values(userData).some(h =>
+      fixedKeys.some(k => h[k]) || Object.values(h.custom || {}).some(v => v)
+    );
+  });
+  if (!activeUsers.length) {
+    canvas.parentElement.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink-soft);font-size:14px">📭 尚無打卡紀錄</div>';
+    return;
+  }
+
   const allDatesSet = new Set();
-  USERS.forEach(name => {
+  activeUsers.forEach(name => {
     Object.keys(checkinsData[name] || {}).forEach(d => {
       if (checkinChartRange === 9999 || d >= cutoffStr) allDatesSet.add(d);
     });
@@ -972,12 +1014,6 @@ function renderCheckinChart() {
   const dates = Array.from(allDatesSet).sort();
 
   if (!dates.length) {
-    canvas.parentElement.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink-soft);font-size:14px">📭 尚無打卡紀錄</div>';
-    return;
-  }
-
-  const activeUsers = USERS.filter(name => Object.keys(checkinsData[name] || {}).length > 0);
-  if (!activeUsers.length) {
     canvas.parentElement.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink-soft);font-size:14px">📭 尚無打卡紀錄</div>';
     return;
   }
@@ -1186,12 +1222,14 @@ async function renderCheckinCard() {
       </div>`;
   }
 
-  // Update › button visual state
+  // Update › button and 今天 button visual state
   const nextBtn = document.getElementById('checkinNextBtn');
+  const todayBtnEl = document.getElementById('checkinTodayBtn');
   if (nextBtn) {
     const atToday = checkinDate >= today();
     nextBtn.style.opacity = atToday ? '0.3' : '1';
     nextBtn.style.cursor = atToday ? 'not-allowed' : 'pointer';
+    if (todayBtnEl) todayBtnEl.style.display = atToday ? 'none' : '';
   }
 }
 
@@ -1275,11 +1313,9 @@ function bmiPercent(bmi) {
 // ── Render ──
 function render() {
   renderWelcome();
-  renderCheckinCard();
-  renderCheckinChart();
-  renderChart();
-  renderCalendar();
-  renderHistory();
+  if (activeTab === 'register') renderCheckinCard();
+  else if (activeTab === 'charts') { renderCheckinChart(); renderChart(); }
+  else if (activeTab === 'history') { renderCalendar(); renderHistory(); }
 }
 
 function renderWelcome() {
@@ -1525,11 +1561,18 @@ window._pickDate = (date, weight, noteEnc) => {
   document.getElementById('dateInput').value = date;
   document.getElementById('weightInput').value = weight;
   try { document.getElementById('noteInput').value = decodeURIComponent(noteEnc || ''); } catch {}
-  checkinDate = date;
-  const checkinDateInput = document.getElementById('checkinDateInput');
-  if (checkinDateInput) checkinDateInput.value = date;
-  renderCheckinCard();
-  document.getElementById('checkinGrid')?.closest('.card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (date <= today()) {
+    checkinDate = date;
+    const checkinDateInput = document.getElementById('checkinDateInput');
+    if (checkinDateInput) checkinDateInput.value = date;
+    // Switch to register tab and scroll to checkin
+    if (activeTab !== 'register') {
+      document.querySelector('[data-tab="register"]').click();
+    } else {
+      renderCheckinCard();
+      document.getElementById('checkinGrid')?.closest('.card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
   toast(`📅 已選取 ${date}`);
 };
 
@@ -1553,6 +1596,16 @@ function buildUI() {
         <div class="stat-chip"><span class="val">—</span><span class="lbl">BMI</span></div>
       </div>
     </div>
+
+    <!-- Tab Navigation -->
+    <div class="tab-nav">
+      <button class="tab-btn" data-tab="register">📝 登記</button>
+      <button class="tab-btn" data-tab="charts">📊 圖表</button>
+      <button class="tab-btn" data-tab="history">📋 紀錄</button>
+    </div>
+
+    <!-- Tab A: 登記 -->
+    <div class="tab-panel" id="tab-register">
 
     <!-- Input Card -->
     <div class="card">
@@ -1615,6 +1668,11 @@ function buildUI() {
       <div id="otherCheckinSection"></div>
     </div>
 
+    </div><!-- /tab-register -->
+
+    <!-- Tab B: 圖表 -->
+    <div class="tab-panel" id="tab-charts">
+
     <!-- Checkin Chart Card -->
     <div class="card">
       <div class="card-header">
@@ -1660,7 +1718,7 @@ function buildUI() {
       </div>
     </div>
 
-    <!-- Chart Card -->
+    <!-- Weight Chart Card -->
     <div class="card">
       <div class="card-header">
         <div class="card-title"><span class="dot" style="background:var(--user-a)"></span>體重趨勢</div>
@@ -1673,6 +1731,11 @@ function buildUI() {
       </div>
       <div class="chart-wrapper"><canvas id="weightChart"></canvas></div>
     </div>
+
+    </div><!-- /tab-charts -->
+
+    <!-- Tab C: 紀錄 -->
+    <div class="tab-panel" id="tab-history">
 
     <!-- Calendar Card -->
     <div class="card">
@@ -1696,6 +1759,8 @@ function buildUI() {
       </div>
       <div class="history-list" id="historyList"></div>
     </div>
+
+    </div><!-- /tab-history -->
   `;
 
   // Event listeners
@@ -1845,6 +1910,22 @@ function buildUI() {
 
   document.getElementById('weightInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter') document.getElementById('saveBtn').click();
+  });
+
+  // ── Tab Navigation ──
+  const switchTab = tabId => {
+    activeTab = tabId;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+    document.getElementById('tab-' + tabId).classList.add('active');
+    if (tabId === 'charts') { renderChart(); renderCheckinChart(); }
+    else if (tabId === 'history') { renderCalendar(); renderHistory(); }
+    else if (tabId === 'register') renderCheckinCard();
+  };
+  switchTab(activeTab);
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.onclick = () => switchTab(btn.dataset.tab);
   });
 
   render();
