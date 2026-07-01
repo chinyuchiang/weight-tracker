@@ -657,6 +657,9 @@
       .stat-chip .val { font-size: 18px; }
       /* Card compact */
       .card { padding: 18px 16px; }
+      /* 防止 grid/flex 子元素撐破容器 */
+      .form-grid, .field { min-width: 0; }
+      input[type="date"] { font-size: 16px; max-width: 100%; }
       /* Checkin date row: hide label, tighten gap */
       .checkin-date-row { gap: 6px; }
       .checkin-date-row > label { display: none; }
@@ -665,16 +668,26 @@
         position: fixed;
         bottom: 0; left: 0; right: 0;
         border-radius: 0;
-        background: var(--white);
-        border-top: 1px solid var(--border);
-        border-bottom: none; border-left: none; border-right: none;
-        padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+        background-color: #ffffff;
+        border: none;
+        border-top: 1px solid #e8ecf4;
+        padding-top: 6px;
+        padding-left: 8px;
+        padding-right: 8px;
+        padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
         margin-bottom: 0;
-        z-index: 200;
+        z-index: 1000;
         gap: 4px;
-        box-shadow: 0 -4px 16px rgba(26,26,46,0.08);
-        -webkit-backdrop-filter: blur(0);
-        backdrop-filter: blur(0);
+        box-shadow: none;
+      }
+      /* 確保 safe-area 以下也是白色 */
+      .tab-nav::after {
+        content: '';
+        position: absolute;
+        left: 0; right: 0;
+        bottom: calc(-1 * env(safe-area-inset-bottom, 0px));
+        height: env(safe-area-inset-bottom, 0px);
+        background-color: #ffffff;
       }
       .tab-btn {
         height: auto;
@@ -1814,7 +1827,7 @@ function buildUI() {
 
     </div><!-- /tab-history -->
 
-    <div style="text-align:center;padding:12px 0 4px;font-size:11px;color:var(--ink-soft);opacity:0.5;">v2026.07.01.4</div>
+    <div style="text-align:center;padding:12px 0 4px;font-size:11px;color:var(--ink-soft);opacity:0.5;">v2026.07.01.5</div>
   `;
 
   // Event listeners
