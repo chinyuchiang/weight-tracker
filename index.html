@@ -666,6 +666,8 @@
       input[type="number"],
       input[type="text"],
       input[type="tel"] { height: 44px; font-size: 16px; padding: 0 12px; width: 100%; min-width: 0; max-width: 100%; }
+      /* iOS date input 原生控件會忽略 max-width，強制走一般 CSS */
+      input[type="date"] { -webkit-appearance: none; appearance: none; }
       /* 打卡日期列：date input 彈性填滿剩餘空間 */
       .checkin-date-row { flex-wrap: nowrap; }
       .checkin-date-row input[type="date"] { flex: 1; min-width: 0; max-width: none; font-size: 14px; padding: 0 8px; height: 40px; }
@@ -1838,7 +1840,7 @@ function buildUI() {
 
     </div><!-- /tab-history -->
 
-    <div style="text-align:center;padding:12px 0 4px;font-size:11px;color:var(--ink-soft);opacity:0.5;">v2026.07.01.8</div>
+    <div style="text-align:center;padding:12px 0 4px;font-size:11px;color:var(--ink-soft);opacity:0.5;">v2026.07.01.9</div>
   `;
 
   // Event listeners
