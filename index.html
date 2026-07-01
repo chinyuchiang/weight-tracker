@@ -343,6 +343,15 @@
 
     .btn-danger:hover { background: var(--coral); color: #fff; }
 
+    /* ── Checkin pop animation ── */
+    @keyframes checkin-pop {
+      0%   { transform: scale(1); }
+      35%  { transform: scale(1.18); }
+      65%  { transform: scale(0.93); }
+      100% { transform: scale(1); }
+    }
+    .checkin-item.pop { animation: checkin-pop 0.32s cubic-bezier(0.34,1.56,0.64,1); }
+
     /* Toast */
     #toast {
       position: fixed;
@@ -714,6 +723,8 @@
       .tab-icon { font-size: 22px; }
       /* Prevent items from having blue flash on tap */
       .checkin-item, .history-item, .cal-table td { -webkit-tap-highlight-color: transparent; }
+      /* Toast 在手機上顯示於 tab bar 上方 */
+      #toast { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
     }
 
     /* No-user state */
@@ -1276,7 +1287,11 @@ async function renderCheckinCard() {
   const progLabel = document.getElementById('checkinProgressLabel');
   if (progBar) {
     progBar.style.width = pct + '%';
-    progBar.style.background = pct === 100 ? '#34c759' : 'var(--mint)';
+    progBar.style.background = pct === 100 ? '#34c759'
+      : pct >= 70 ? 'var(--mint)'
+      : pct >= 40 ? 'var(--amber)'
+      : 'var(--coral)';
+    progBar.style.transition = 'width 0.4s ease, background 0.4s ease';
   }
   if (progLabel) progLabel.textContent = `${checked} / ${totalItems} 完成（${pct}%）`;
 
@@ -1295,7 +1310,7 @@ async function renderCheckinCard() {
   }
 
   container.innerHTML = fixedItems.map(f => `
-    <div class="checkin-item ${habits[f.key] ? 'checked' : ''}" onclick="window._toggleCheckin('${f.key}',null)">
+    <div class="checkin-item ${habits[f.key] ? 'checked' : ''}" data-ckey="${f.key}" onclick="window._toggleCheckin('${f.key}',null)">
       <input type="checkbox" ${habits[f.key] ? 'checked' : ''} readonly />
       <span class="checkin-icon">${f.icon}</span>
       <span class="checkin-label">${f.label}</span>
@@ -1311,7 +1326,7 @@ async function renderCheckinCard() {
         customs.map(c => {
           const enc = encodeURIComponent(c);
           const isChecked = !!(habits.custom && habits.custom[c]);
-          return `<div class="checkin-item ${isChecked ? 'checked' : ''}" onclick="window._toggleCheckin(null,'${enc}')">
+          return `<div class="checkin-item ${isChecked ? 'checked' : ''}" data-ckey="custom:${enc}" onclick="window._toggleCheckin(null,'${enc}')">
             <input type="checkbox" ${isChecked ? 'checked' : ''} readonly />
             <span class="checkin-icon">⭐</span>
             <span class="checkin-label">${c}</span>
@@ -1381,6 +1396,10 @@ window._toggleCheckin = async (fixedKey, customKeyEnc) => {
   }
   await saveCheckinToFirestore(checkinDate);
   renderCheckinCard();
+  // Animate toggled item
+  const _animKey = fixedKey ? fixedKey : `custom:${customKeyEnc}`;
+  const _animEl = document.querySelector(`.checkin-item[data-ckey="${_animKey}"]`);
+  if (_animEl) { _animEl.classList.remove('pop'); void _animEl.offsetWidth; _animEl.classList.add('pop'); }
   const h2 = checkinsData[currentUser][checkinDate];
   const customs2 = customHabits[currentUser] || [];
   const fixedKeys = ['breakfast','lunch','dinner','exercise','sleep'];
@@ -1661,7 +1680,32 @@ function renderCalendar() {
   container.innerHTML = html;
 }
 
+function renderHistoryStats() {
+  const el = document.getElementById('historyStats');
+  if (!el) return;
+  const entries = (data[currentUser] || []).filter(e => e.weight > 0);
+  const now = new Date();
+  const todayStr = fmtDate(now);
+  const thisMonthStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - (now.getDay() === 0 ? 6 : now.getDay() - 1));
+  const weekStartStr = fmtDate(weekStart);
+  const avg = arr => arr.length ? (arr.reduce((s,e) => s + e.weight, 0) / arr.length).toFixed(1) : '—';
+  const weekEntries = entries.filter(e => e.date >= weekStartStr && e.date <= todayStr);
+  const monthEntries = entries.filter(e => e.date.startsWith(thisMonthStr));
+  const allWeights = entries.map(e => e.weight);
+  const minW = allWeights.length ? Math.min(...allWeights).toFixed(1) : '—';
+  const maxW = allWeights.length ? Math.max(...allWeights).toFixed(1) : '—';
+  el.innerHTML = `<div class="stats-row" style="margin-top:0;grid-template-columns:repeat(2,1fr)">
+    <div class="stat-chip"><span class="val" style="font-size:20px">${avg(weekEntries)}</span><span class="lbl">本週平均 kg</span></div>
+    <div class="stat-chip"><span class="val" style="font-size:20px">${avg(monthEntries)}</span><span class="lbl">本月平均 kg</span></div>
+    <div class="stat-chip"><span class="val" style="font-size:20px;color:var(--mint-dark)">${minW}</span><span class="lbl">歷史最輕 kg</span></div>
+    <div class="stat-chip"><span class="val" style="font-size:20px;color:var(--coral)">${maxW}</span><span class="lbl">歷史最重 kg</span></div>
+  </div>`;
+}
+
 function renderHistory() {
+  renderHistoryStats();
   const container = document.getElementById('historyList');
   if (!container) return;
   const entries = [...(data[currentUser] || [])].filter(e => e.weight > 0).reverse();
@@ -1897,6 +1941,12 @@ function buildUI() {
       <div id="calBody"></div>
     </div>
 
+    <!-- History Stats -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-header"><div class="card-title"><span class="dot" style="background:var(--mint)"></span>統計摘要</div></div>
+      <div id="historyStats"></div>
+    </div>
+
     <!-- History Card -->
     <div class="card">
       <div class="card-header">
@@ -1908,7 +1958,7 @@ function buildUI() {
 
     </div><!-- /tab-history -->
 
-    <div style="text-align:center;padding:12px 0 4px;font-size:11px;color:var(--ink-soft);opacity:0.5;">v2026.07.01.11</div>
+    <div style="text-align:center;padding:12px 0 4px;font-size:11px;color:var(--ink-soft);opacity:0.5;">v2026.07.01.12</div>
   `;
 
   // Event listeners
