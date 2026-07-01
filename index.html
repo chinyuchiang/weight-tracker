@@ -791,6 +791,8 @@ let goalWeight = {};
 let checkinsData = {};
 let customHabits = {};
 let checkinDate = '';
+let checkinChart = null;
+let checkinChartRange = 30;
 
 // ── Utilities ──
 function today() {
@@ -881,6 +883,89 @@ async function loadCheckinsForDate(date) {
 async function saveCheckinToFirestore(date) {
   const ref = doc(db, 'users', currentUser, 'checkins', date);
   try { await setDoc(ref, checkinsData[currentUser][date]); } catch {}
+}
+
+function renderCheckinChart() {
+  const canvas = document.getElementById('checkinChartCanvas');
+  if (!canvas) return;
+  if (checkinChart) { checkinChart.destroy(); checkinChart = null; }
+
+  const customs = customHabits[currentUser] || [];
+  const fixedKeys = ['breakfast','lunch','dinner','exercise','sleep'];
+  const totalItems = fixedKeys.length + customs.length;
+
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - checkinChartRange + 1);
+  const cutoffStr = cutoff.toISOString().split('T')[0];
+
+  const userData = checkinsData[currentUser] || {};
+  const dates = Object.keys(userData)
+    .filter(d => checkinChartRange === 9999 || d >= cutoffStr)
+    .sort();
+
+  if (!dates.length) {
+    canvas.parentElement.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink-soft);font-size:14px">📭 尚無打卡紀錄</div>';
+    return;
+  }
+
+  const pctData = dates.map(d => {
+    if (totalItems === 0) return 0;
+    const h = userData[d];
+    const done = fixedKeys.filter(k => h[k]).length
+      + customs.filter(c => h.custom && h.custom[c]).length;
+    return Math.round(done / totalItems * 100);
+  });
+
+  const avgPct = Math.round(pctData.reduce((a,b) => a+b, 0) / pctData.length);
+
+  checkinChart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: dates,
+      datasets: [{
+        label: '打卡完成率',
+        data: pctData,
+        borderColor: '#34c759',
+        backgroundColor: 'rgba(52,199,89,0.08)',
+        tension: 0.35,
+        fill: true,
+        pointRadius: 3,
+        pointHoverRadius: 6,
+        pointBackgroundColor: pctData.map(v => v === 100 ? '#34c759' : v >= 60 ? '#ffb347' : '#ff6b6b'),
+      }, {
+        label: `平均 ${avgPct}%`,
+        data: dates.map(() => avgPct),
+        borderColor: 'rgba(52,199,89,0.35)',
+        borderDash: [6, 4],
+        pointRadius: 0,
+        tension: 0,
+        fill: false,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 12 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => ctx.dataset.label.startsWith('平均')
+              ? `平均完成率：${avgPct}%`
+              : `完成率：${ctx.parsed.y}%`
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { maxTicksLimit: 8, font: { size: 11 } }, grid: { color: '#f0f0f0' } },
+        y: {
+          min: 0, max: 100,
+          ticks: { font: { size: 11 }, callback: v => v + '%' },
+          grid: { color: '#f0f0f0' }
+        }
+      }
+    }
+  });
 }
 
 function getCheckinPct(date) {
@@ -1039,6 +1124,7 @@ function bmiPercent(bmi) {
 function render() {
   renderWelcome();
   renderCheckinCard();
+  renderCheckinChart();
   renderChart();
   renderCalendar();
   renderHistory();
@@ -1349,6 +1435,20 @@ function buildUI() {
       </div>
     </div>
 
+    <!-- Checkin Chart Card -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><span class="dot" style="background:#34c759"></span>打卡趨勢</div>
+        <div class="chart-controls">
+          <button class="range-btn" data-checkin-range="7">7天</button>
+          <button class="range-btn active" data-checkin-range="30">30天</button>
+          <button class="range-btn" data-checkin-range="90">90天</button>
+          <button class="range-btn" data-checkin-range="9999">全部</button>
+        </div>
+      </div>
+      <div class="chart-wrapper" id="checkinChartWrapper"><canvas id="checkinChartCanvas"></canvas></div>
+    </div>
+
     <!-- Goal & BMI Card -->
     <div class="card">
       <div class="card-header">
@@ -1487,10 +1587,23 @@ function buildUI() {
 
   document.querySelectorAll('.range-btn').forEach(btn => {
     btn.onclick = () => {
-      document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+      if (btn.dataset.range !== undefined && btn.dataset.checkinRange === undefined) {
+        document.querySelectorAll('[data-range]').forEach(b => {
+          if (b.dataset.checkinRange === undefined) b.classList.remove('active');
+        });
+        btn.classList.add('active');
+        chartRange = parseInt(btn.dataset.range);
+        renderChart();
+      }
+    };
+  });
+
+  document.querySelectorAll('[data-checkin-range]').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('[data-checkin-range]').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      chartRange = parseInt(btn.dataset.range);
-      renderChart();
+      checkinChartRange = parseInt(btn.dataset.checkinRange);
+      renderCheckinChart();
     };
   });
 
