@@ -1,4 +1,4 @@
-const CACHE = 'weight-tracker-v1';
+const CACHE = 'weight-tracker-v3';
 const PRECACHE = ['/', '/index.html'];
 
 self.addEventListener('install', e => {
