@@ -830,13 +830,15 @@ async function loadData() {
     USERS.forEach(n => { if (!data[n]) data[n] = []; });
   }
 
-  // Load all checkins (for calendar display)
+  // Load checkins: localStorage first (instant), then Firebase overwrite
+  loadCheckinsLocal();
   try {
     for (const name of USERS) {
       const cSnap = await getDocs(collection(db, 'users', name, 'checkins'));
       if (!checkinsData[name]) checkinsData[name] = {};
       cSnap.forEach(ds => { checkinsData[name][ds.id] = ds.data(); });
     }
+    saveCheckinsLocal();
   } catch {}
 
   // Load goals/heights
@@ -880,7 +882,26 @@ async function loadCheckinsForDate(date) {
   return checkinsData[currentUser][date];
 }
 
+const CHECKIN_KEY = 'checkinData_v1';
+
+function saveCheckinsLocal() {
+  try { localStorage.setItem(CHECKIN_KEY, JSON.stringify(checkinsData)); } catch {}
+}
+
+function loadCheckinsLocal() {
+  try {
+    const raw = localStorage.getItem(CHECKIN_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    Object.keys(parsed).forEach(name => {
+      if (!checkinsData[name]) checkinsData[name] = {};
+      Object.assign(checkinsData[name], parsed[name]);
+    });
+  } catch {}
+}
+
 async function saveCheckinToFirestore(date) {
+  saveCheckinsLocal();
   const ref = doc(db, 'users', currentUser, 'checkins', date);
   try { await setDoc(ref, checkinsData[currentUser][date]); } catch {}
 }
