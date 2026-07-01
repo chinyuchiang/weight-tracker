@@ -1,8 +1,6 @@
-const CACHE = 'weight-tracker-v3';
-const PRECACHE = ['/', '/index.html'];
+const CACHE = 'weight-tracker-v4';
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(PRECACHE)));
   self.skipWaiting();
 });
 
@@ -17,10 +15,23 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
-  // Let Firebase, Google APIs, and CDN requests pass through
   if (url.hostname.includes('firebase') || url.hostname.includes('google') ||
       url.hostname.includes('gstatic') || url.hostname.includes('jsdelivr') ||
       url.hostname.includes('fonts')) return;
+
+  // HTML: network-first，確保每次都拿最新版，離線才 fallback 快取
+  if (e.request.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname === '/') {
+    e.respondWith(
+      fetch(e.request).then(res => {
+        const clone = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, clone));
+        return res;
+      }).catch(() => caches.match('/index.html'))
+    );
+    return;
+  }
+
+  // 其他靜態資源：cache-first
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) return cached;
