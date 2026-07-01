@@ -976,7 +976,13 @@ function renderCheckinChart() {
     return;
   }
 
-  const datasets = USERS.map(name => {
+  const activeUsers = USERS.filter(name => Object.keys(checkinsData[name] || {}).length > 0);
+  if (!activeUsers.length) {
+    canvas.parentElement.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink-soft);font-size:14px">📭 尚無打卡紀錄</div>';
+    return;
+  }
+
+  const datasets = activeUsers.map(name => {
     const c = colors[name];
     const customs = customHabits[name] || [];
     const totalItems = fixedKeys.length + customs.length;
@@ -1109,6 +1115,14 @@ async function renderCheckinCard() {
   if (streakBadge) {
     const streak = getCheckinStreak();
     streakBadge.textContent = streak >= 2 ? `🔥 連續 ${streak} 天` : streak === 1 ? '🌱 連續 1 天' : '';
+  }
+
+  const dateLabel = document.getElementById('checkinDateLabel');
+  if (dateLabel) {
+    const t = today();
+    const yd = new Date(); yd.setDate(yd.getDate() - 1);
+    const yesterday = `${yd.getFullYear()}-${String(yd.getMonth()+1).padStart(2,'0')}-${String(yd.getDate()).padStart(2,'0')}`;
+    dateLabel.textContent = checkinDate === t ? '今天' : checkinDate === yesterday ? '昨天' : '';
   }
 
   container.innerHTML = fixedItems.map(f => `
@@ -1309,7 +1323,10 @@ function renderWelcome() {
     bmiSub.textContent = bmi ? bmiCategory(bmi) : '⬆ 請輸入身高以計算';
     bmiSub.style.color = bmi ? '' : 'var(--amber)';
     const ptr = bmiEl.querySelector('.bmi-pointer');
-    if (ptr && bmi) ptr.style.left = bmiPercent(bmi) + '%';
+    if (ptr) {
+      if (bmi) { ptr.style.display = ''; ptr.style.left = bmiPercent(bmi) + '%'; }
+      else { ptr.style.display = 'none'; }
+    }
   }
 
   // Update goal card
@@ -1584,6 +1601,7 @@ function buildUI() {
         <button class="cal-nav-btn" id="checkinPrevBtn">‹</button>
         <input type="date" id="checkinDateInput" value="${today()}" />
         <button class="cal-nav-btn" id="checkinNextBtn">›</button>
+        <span id="checkinDateLabel" style="font-size:13px;font-weight:600;color:var(--mint-dark);min-width:28px"></span>
         <button class="btn btn-ghost" style="height:44px;padding:0 14px;font-size:13px;white-space:nowrap" id="checkinTodayBtn">今天</button>
       </div>
       <div class="checkin-section-label">固定項目</div>
@@ -1636,7 +1654,7 @@ function buildUI() {
             <button class="btn btn-ghost" style="height:52px;padding:0 16px;font-size:15px" id="saveHeightBtn">設定</button>
           </div>
           <div class="metric-value" style="font-size:24px;margin-top:8px">${bmi || '—'}</div>
-          <div class="bmi-bar"><div class="bmi-pointer" style="left:${bmi ? bmiPercent(bmi) : 30}%"></div></div>
+          <div class="bmi-bar"><div class="bmi-pointer" style="left:${bmi ? bmiPercent(bmi) : 30}%;${bmi ? '' : 'display:none'}"></div></div>
           <div class="metric-sub">${bmi ? bmiCategory(bmi) : '需輸入身高'}</div>
         </div>
       </div>
@@ -1664,6 +1682,7 @@ function buildUI() {
           <button class="cal-nav-btn" id="prevMonthBtn">‹</button>
           <span class="cal-title" id="calTitle"></span>
           <button class="cal-nav-btn" id="nextMonthBtn">›</button>
+          <button class="cal-nav-btn" id="todayMonthBtn" style="width:auto;padding:0 10px;border-radius:8px;font-size:12px">本月</button>
         </div>
       </div>
       <div id="calBody"></div>
@@ -1746,6 +1765,11 @@ function buildUI() {
     calMonth++; if (calMonth > 11) { calMonth = 0; calYear++; }
     renderCalendar();
   };
+  document.getElementById('todayMonthBtn').onclick = () => {
+    const t = new Date();
+    calYear = t.getFullYear(); calMonth = t.getMonth();
+    renderCalendar();
+  };
 
   document.querySelectorAll('.range-btn').forEach(btn => {
     btn.onclick = () => {
@@ -1819,6 +1843,10 @@ function buildUI() {
     if (e.key === 'Enter') document.getElementById('addHabitBtn').click();
   });
 
+  document.getElementById('weightInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('saveBtn').click();
+  });
+
   render();
 }
 
@@ -1841,6 +1869,7 @@ function switchUser(name) {
   calYear = null; calMonth = null;
   checkinDate = today();
   historyPage = 0;
+  localStorage.setItem('lastUser', name);
   loadCustomHabitsForUser();
   document.querySelectorAll('.user-pill').forEach(p => {
     p.className = 'user-pill';
@@ -1855,6 +1884,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('.user-pill').forEach(p => {
     p.onclick = () => switchUser(p.dataset.user);
   });
+  const lastUser = localStorage.getItem('lastUser');
+  if (lastUser && USERS.includes(lastUser)) switchUser(lastUser);
 });
 </script>
 </body>
