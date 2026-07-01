@@ -2,8 +2,14 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
-  <title>體重紀錄管家</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>體重管家</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#00c9a7" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="體重管家" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="apple-touch-icon" href="/icon.svg" />
   <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
@@ -626,16 +632,58 @@
       margin-bottom: 12px;
     }
 
+    /* ── Tab icon/label ── */
+    .tab-btn { display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .tab-icon { font-size: 16px; line-height: 1; }
+
     /* Responsive */
     @media (max-width: 600px) {
       .stats-row { grid-template-columns: repeat(2, 1fr); }
       .form-grid { grid-template-columns: 1fr; }
       .goal-bmi-grid { grid-template-columns: 1fr; }
       .chart-wrapper { height: 240px; }
-      .cal-table td { height: 56px; }
+      .cal-table td { height: 52px; }
+      .cal-table th { font-size: 9px; padding: 6px 0; }
       .history-note { display: none; }
       .site-header { padding: 0 14px; }
-      .main { padding: 16px 12px 60px; }
+      /* Main content: bottom padding for fixed tab bar + safe area */
+      .main { padding: 16px 12px calc(72px + env(safe-area-inset-bottom)); }
+      /* Welcome banner compact */
+      .welcome-banner { padding: 20px 18px; margin-bottom: 14px; }
+      .welcome-banner h2 { font-size: 20px; margin-bottom: 4px; }
+      .stats-row { margin-top: 14px; gap: 8px; }
+      .stat-chip { padding: 10px 8px; }
+      .stat-chip .val { font-size: 18px; }
+      /* Card compact */
+      .card { padding: 18px 16px; }
+      /* Checkin date row: hide label, tighten gap */
+      .checkin-date-row { gap: 6px; }
+      .checkin-date-row > label { display: none; }
+      /* Fixed bottom tab bar */
+      .tab-nav {
+        position: fixed;
+        bottom: 0; left: 0; right: 0;
+        border-radius: 0;
+        border-top: 1px solid var(--border);
+        border-bottom: none; border-left: none; border-right: none;
+        padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+        margin-bottom: 0;
+        z-index: 200;
+        gap: 4px;
+        box-shadow: 0 -4px 16px rgba(26,26,46,0.08);
+      }
+      .tab-btn {
+        height: auto;
+        padding: 8px 4px;
+        flex-direction: column;
+        gap: 2px;
+        border-radius: 10px;
+        font-size: 10px;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .tab-icon { font-size: 22px; }
+      /* Prevent items from having blue flash on tap */
+      .checkin-item, .history-item, .cal-table td { -webkit-tap-highlight-color: transparent; }
     }
 
     /* No-user state */
@@ -1599,9 +1647,9 @@ function buildUI() {
 
     <!-- Tab Navigation -->
     <div class="tab-nav">
-      <button class="tab-btn" data-tab="register">📝 登記</button>
-      <button class="tab-btn" data-tab="charts">📊 圖表</button>
-      <button class="tab-btn" data-tab="history">📋 紀錄</button>
+      <button class="tab-btn" data-tab="register"><span class="tab-icon">📝</span><span class="tab-label">登記</span></button>
+      <button class="tab-btn" data-tab="charts"><span class="tab-icon">📊</span><span class="tab-label">圖表</span></button>
+      <button class="tab-btn" data-tab="history"><span class="tab-icon">📋</span><span class="tab-label">紀錄</span></button>
     </div>
 
     <!-- Tab A: 登記 -->
@@ -1968,6 +2016,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   const lastUser = localStorage.getItem('lastUser');
   if (lastUser && USERS.includes(lastUser)) switchUser(lastUser);
 });
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+}
 </script>
 </body>
 </html>
