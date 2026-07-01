@@ -822,6 +822,7 @@ let customHabits = {};
 let checkinDate = '';
 let checkinChart = null;
 let checkinChartRange = 30;
+let historyPage = 0;
 
 // ── Utilities ──
 function today() {
@@ -870,11 +871,20 @@ async function loadData() {
     saveCheckinsLocal();
   } catch {}
 
-  // Load all custom habits
+  // Load all custom habits (localStorage first, then Firebase overwrite)
   USERS.forEach(n => {
     const raw = localStorage.getItem(`customHabits_${n}`);
     customHabits[n] = raw ? JSON.parse(raw) : [];
   });
+  try {
+    for (const name of USERS) {
+      const snap = await getDoc(doc(db, 'users', name, 'customHabits', 'config'));
+      if (snap.exists()) {
+        customHabits[name] = snap.data().items || [];
+        localStorage.setItem(`customHabits_${name}`, JSON.stringify(customHabits[name]));
+      }
+    }
+  } catch {}
 
   // Load goals/heights
   USERS.forEach(n => {
@@ -1049,8 +1059,22 @@ function loadCustomHabitsForUser() {
   customHabits[currentUser] = raw ? JSON.parse(raw) : [];
 }
 
-function saveCustomHabitsForUser() {
-  localStorage.setItem(`customHabits_${currentUser}`, JSON.stringify(customHabits[currentUser] || []));
+function getCheckinStreak() {
+  let streak = 0;
+  const d = new Date();
+  while (true) {
+    const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    if (getCheckinPct(ds) < 100) break;
+    streak++;
+    d.setDate(d.getDate() - 1);
+  }
+  return streak;
+}
+
+async function saveCustomHabitsForUser() {
+  const items = customHabits[currentUser] || [];
+  localStorage.setItem(`customHabits_${currentUser}`, JSON.stringify(items));
+  try { await setDoc(doc(db, 'users', currentUser, 'customHabits', 'config'), { items }); } catch {}
 }
 
 async function renderCheckinCard() {
@@ -1080,6 +1104,12 @@ async function renderCheckinCard() {
     progBar.style.background = pct === 100 ? '#34c759' : 'var(--mint)';
   }
   if (progLabel) progLabel.textContent = `${checked} / ${totalItems} 完成（${pct}%）`;
+
+  const streakBadge = document.getElementById('checkinStreakBadge');
+  if (streakBadge) {
+    const streak = getCheckinStreak();
+    streakBadge.textContent = streak >= 2 ? `🔥 連續 ${streak} 天` : streak === 1 ? '🌱 連續 1 天' : '';
+  }
 
   container.innerHTML = fixedItems.map(f => `
     <div class="checkin-item ${habits[f.key] ? 'checked' : ''}" onclick="window._toggleCheckin('${f.key}',null)">
@@ -1129,7 +1159,7 @@ async function renderCheckinCard() {
     otherSection.innerHTML = `
       <hr class="checkin-other-divider" />
       <div class="checkin-other-header">
-        <span class="checkin-other-title" style="color:${otherColor}">👤 ${otherUser} 的今日打卡</span>
+        <span class="checkin-other-title" style="color:${otherColor}">👤 ${otherUser} 的打卡（${checkinDate}）</span>
         <span class="checkin-other-pct">${otherDone} / ${otherTotal} 完成（${otherPct}%）</span>
       </div>
       <div class="checkin-grid">
@@ -1267,16 +1297,25 @@ function renderWelcome() {
   const bmiEl = document.getElementById('bmiCard');
   if (bmiEl) {
     bmiEl.querySelector('.metric-value').textContent = bmi || '—';
-    bmiEl.querySelector('.metric-sub').textContent = bmi ? bmiCategory(bmi) : '需輸入身高';
+    const bmiSub = bmiEl.querySelector('.metric-sub');
+    bmiSub.textContent = bmi ? bmiCategory(bmi) : '⬆ 請輸入身高以計算';
+    bmiSub.style.color = bmi ? '' : 'var(--amber)';
     const ptr = bmiEl.querySelector('.bmi-pointer');
     if (ptr && bmi) ptr.style.left = bmiPercent(bmi) + '%';
   }
 
   // Update goal card
   const goalEl = document.getElementById('goalCard');
-  if (goalEl && stats && goal) {
-    const diff = goalDiff !== null ? (parseFloat(goalDiff) > 0 ? `還需減 ${goalDiff} kg` : `已超標 ${Math.abs(goalDiff)} kg`) : '';
-    goalEl.querySelector('.metric-sub').textContent = diff;
+  const goalSub = goalEl && goalEl.querySelector('.metric-sub');
+  if (goalSub) {
+    if (stats && goal) {
+      const diff = goalDiff !== null ? (parseFloat(goalDiff) > 0 ? `還需減 ${goalDiff} kg` : `已達標！超出 ${Math.abs(goalDiff)} kg`) : '';
+      goalSub.textContent = diff;
+      goalSub.style.color = '';
+    } else {
+      goalSub.textContent = '⬆ 請設定目標體重';
+      goalSub.style.color = 'var(--amber)';
+    }
   }
 }
 
@@ -1424,7 +1463,11 @@ function renderHistory() {
     return;
   }
 
-  const html = entries.slice(0, 30).map((e, i) => {
+  const pageSize = 30;
+  const visible = entries.slice(0, (historyPage + 1) * pageSize);
+  const hasMore = entries.length > visible.length;
+
+  const html = visible.map((e, i) => {
     const prev = entries[i + 1];
     let diffHtml = '';
     if (prev) {
@@ -1442,7 +1485,14 @@ function renderHistory() {
     </div>`;
   }).join('');
 
-  container.innerHTML = html;
+  const loadMoreHtml = hasMore
+    ? `<div style="text-align:center;padding:16px 0"><button class="btn btn-ghost" style="height:44px;padding:0 24px" id="loadMoreBtn">載入更多（還有 ${entries.length - visible.length} 筆）</button></div>`
+    : '';
+
+  container.innerHTML = html + loadMoreHtml;
+  if (hasMore) {
+    document.getElementById('loadMoreBtn').onclick = () => { historyPage++; renderHistory(); };
+  }
 }
 
 // ── Global helpers ──
@@ -1450,6 +1500,11 @@ window._pickDate = (date, weight, noteEnc) => {
   document.getElementById('dateInput').value = date;
   document.getElementById('weightInput').value = weight;
   try { document.getElementById('noteInput').value = decodeURIComponent(noteEnc || ''); } catch {}
+  checkinDate = date;
+  const checkinDateInput = document.getElementById('checkinDateInput');
+  if (checkinDateInput) checkinDateInput.value = date;
+  renderCheckinCard();
+  document.getElementById('checkinGrid')?.closest('.card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   toast(`📅 已選取 ${date}`);
 };
 
@@ -1510,12 +1565,17 @@ function buildUI() {
     <div class="card">
       <div class="card-header">
         <div class="card-title"><span class="dot" style="background:#34c759"></span>每日生活打卡</div>
-        <span id="checkinProgressLabel" style="font-size:13px;color:var(--ink-soft)"></span>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span id="checkinStreakBadge" style="font-size:13px;font-weight:600;color:#ff9500"></span>
+          <span id="checkinProgressLabel" style="font-size:13px;color:var(--ink-soft)"></span>
+        </div>
       </div>
       <div class="checkin-progress"><div class="checkin-progress-bar" id="checkinProgress" style="width:0%"></div></div>
       <div class="checkin-date-row">
         <label>打卡日期</label>
+        <button class="cal-nav-btn" id="checkinPrevBtn">‹</button>
         <input type="date" id="checkinDateInput" value="${today()}" />
+        <button class="cal-nav-btn" id="checkinNextBtn">›</button>
         <button class="btn btn-ghost" style="height:44px;padding:0 14px;font-size:13px;white-space:nowrap" id="checkinTodayBtn">今天</button>
       </div>
       <div class="checkin-section-label">固定項目</div>
@@ -1715,6 +1775,24 @@ function buildUI() {
     renderCheckinCard();
   };
 
+  document.getElementById('checkinPrevBtn').onclick = () => {
+    const d = new Date(checkinDate + 'T00:00:00');
+    d.setDate(d.getDate() - 1);
+    checkinDate = d.toISOString().split('T')[0];
+    document.getElementById('checkinDateInput').value = checkinDate;
+    renderCheckinCard();
+  };
+
+  document.getElementById('checkinNextBtn').onclick = () => {
+    const d = new Date(checkinDate + 'T00:00:00');
+    d.setDate(d.getDate() + 1);
+    const nxt = d.toISOString().split('T')[0];
+    if (nxt > today()) return;
+    checkinDate = nxt;
+    document.getElementById('checkinDateInput').value = checkinDate;
+    renderCheckinCard();
+  };
+
   document.getElementById('addHabitBtn').onclick = () => {
     const input = document.getElementById('newHabitInput');
     const name = input.value.trim();
@@ -1753,6 +1831,7 @@ function switchUser(name) {
   currentUser = name;
   calYear = null; calMonth = null;
   checkinDate = today();
+  historyPage = 0;
   loadCustomHabitsForUser();
   document.querySelectorAll('.user-pill').forEach(p => {
     p.className = 'user-pill';
