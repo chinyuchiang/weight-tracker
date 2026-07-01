@@ -828,6 +828,15 @@ async function loadData() {
     USERS.forEach(n => { if (!data[n]) data[n] = []; });
   }
 
+  // Load all checkins (for calendar display)
+  try {
+    for (const name of USERS) {
+      const cSnap = await getDocs(collection(db, 'users', name, 'checkins'));
+      if (!checkinsData[name]) checkinsData[name] = {};
+      cSnap.forEach(ds => { checkinsData[name][ds.id] = ds.data(); });
+    }
+  } catch {}
+
   // Load goals/heights
   USERS.forEach(n => {
     goalWeight[n] = parseFloat(localStorage.getItem(`goal_${n}`) || 0);
@@ -874,6 +883,18 @@ async function saveCheckinToFirestore(date) {
   try { await setDoc(ref, checkinsData[currentUser][date]); } catch {}
 }
 
+function getCheckinPct(date) {
+  const habits = checkinsData[currentUser] && checkinsData[currentUser][date];
+  if (!habits) return -1;
+  const customs = customHabits[currentUser] || [];
+  const fixedKeys = ['breakfast','lunch','dinner','exercise','sleep'];
+  const total = fixedKeys.length + customs.length;
+  if (total === 0) return -1;
+  const checked = fixedKeys.filter(k => habits[k]).length
+    + customs.filter(c => habits.custom && habits.custom[c]).length;
+  return Math.round(checked / total * 100);
+}
+
 function loadCustomHabitsForUser() {
   const raw = localStorage.getItem(`customHabits_${currentUser}`);
   customHabits[currentUser] = raw ? JSON.parse(raw) : [];
@@ -892,7 +913,7 @@ async function renderCheckinCard() {
 
   const fixedItems = [
     { key: 'breakfast', icon: '🌅', label: '早餐' },
-    { key: 'lunch',    icon: '☀️',  label: '午餐' },
+    { key: 'lunch',    icon: '🍱',  label: '午餐' },
     { key: 'dinner',   icon: '🌙',  label: '晚餐' },
     { key: 'exercise', icon: '💪',  label: '運動' },
     { key: 'sleep',    icon: '😴',  label: '睡眠' },
@@ -905,7 +926,10 @@ async function renderCheckinCard() {
 
   const progBar = document.getElementById('checkinProgress');
   const progLabel = document.getElementById('checkinProgressLabel');
-  if (progBar) progBar.style.width = pct + '%';
+  if (progBar) {
+    progBar.style.width = pct + '%';
+    progBar.style.background = pct === 100 ? '#34c759' : 'var(--mint)';
+  }
   if (progLabel) progLabel.textContent = `${checked} / ${totalItems} 完成（${pct}%）`;
 
   container.innerHTML = fixedItems.map(f => `
@@ -952,6 +976,13 @@ window._toggleCheckin = async (fixedKey, customKeyEnc) => {
   }
   await saveCheckinToFirestore(checkinDate);
   renderCheckinCard();
+  // 全部完成時慶祝
+  const h2 = checkinsData[currentUser][checkinDate];
+  const customs2 = customHabits[currentUser] || [];
+  const fixedKeys = ['breakfast','lunch','dinner','exercise','sleep'];
+  const total2 = fixedKeys.length + customs2.length;
+  const done2 = fixedKeys.filter(k => h2[k]).length + customs2.filter(c => h2.custom && h2.custom[c]).length;
+  if (total2 > 0 && done2 === total2) toast('🎉 今日打卡全部完成！太棒了！', 3000);
 };
 
 window._deleteCustomHabit = (enc) => {
@@ -1135,9 +1166,14 @@ function renderChart() {
     return points;
   });
 
+  const filteredDatasets = datasets.filter(ds => {
+    if (ds.label && ds.label.includes('☠️')) return ds.data.some(v => v !== null);
+    return true;
+  });
+
   chart = new Chart(ctx, {
     type: 'line',
-    data: { labels: keys, datasets },
+    data: { labels: keys, datasets: filteredDatasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -1182,8 +1218,15 @@ function renderCalendar() {
     const ds = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
     const e = entryMap[ds];
     const isToday = ds === todayStr;
+    const cpct = getCheckinPct(ds);
+    const checkinBadge = cpct === 100
+      ? '<span style="position:absolute;top:2px;right:3px;font-size:10px">✅</span>'
+      : cpct > 0
+      ? `<span style="position:absolute;top:4px;right:4px;width:7px;height:7px;border-radius:50%;background:var(--amber);display:inline-block"></span>`
+      : '';
     html += `<td class="${isToday ? 'today' : ''}" onclick="window._pickDate('${ds}','${e?e.weight:''}','${e?encodeURIComponent(e.note||''):''}')">
       <span class="cal-day-num">${day}</span>
+      ${checkinBadge}
       <span class="cal-weight">${e && e.weight > 0 ? e.weight : ''}</span>
       <span class="cal-note">${e && e.note ? decodeURIComponent(encodeURIComponent(e.note)) : ''}</span>
       ${e && e.unhealthy ? '<span class="cal-unhealthy">☠️</span>' : (e && e.weight ? '<span class="cal-dot"></span>' : '')}
@@ -1294,6 +1337,7 @@ function buildUI() {
       <div class="checkin-date-row">
         <label>打卡日期</label>
         <input type="date" id="checkinDateInput" value="${today()}" />
+        <button class="btn btn-ghost" style="height:44px;padding:0 14px;font-size:13px;white-space:nowrap" id="checkinTodayBtn">今天</button>
       </div>
       <div class="checkin-section-label">固定項目</div>
       <div class="checkin-grid" id="checkinGrid"></div>
@@ -1456,6 +1500,13 @@ function buildUI() {
     checkinDate = this.value;
     renderCheckinCard();
   });
+
+  document.getElementById('checkinTodayBtn').onclick = () => {
+    const t = today();
+    checkinDate = t;
+    document.getElementById('checkinDateInput').value = t;
+    renderCheckinCard();
+  };
 
   document.getElementById('addHabitBtn').onclick = () => {
     const input = document.getElementById('newHabitInput');
