@@ -659,10 +659,14 @@
       .stat-chip .val { font-size: 18px; }
       /* Card compact */
       .card { padding: 18px 16px; }
-      /* 防止任何元素造成橫向捲動 */
-      .form-grid, .field { min-width: 0; }
-      input[type="date"] { font-size: 16px; width: 100%; min-width: 0; max-width: 100%; }
-      /* 打卡日期列：date input 彈性填滿剩餘空間，不固定 max-width */
+      /* 防止 grid/flex 子元素撐破容器 */
+      .form-grid, .field { min-width: 0; overflow: hidden; }
+      /* 所有輸入欄在手機上縮小高度與字體 */
+      input[type="date"],
+      input[type="number"],
+      input[type="text"],
+      input[type="tel"] { height: 44px; font-size: 16px; padding: 0 12px; width: 100%; min-width: 0; max-width: 100%; }
+      /* 打卡日期列：date input 彈性填滿剩餘空間 */
       .checkin-date-row { flex-wrap: nowrap; }
       .checkin-date-row input[type="date"] { flex: 1; min-width: 0; max-width: none; font-size: 14px; padding: 0 8px; height: 40px; }
       #checkinDateLabel { display: none; }
@@ -1834,7 +1838,7 @@ function buildUI() {
 
     </div><!-- /tab-history -->
 
-    <div style="text-align:center;padding:12px 0 4px;font-size:11px;color:var(--ink-soft);opacity:0.5;">v2026.07.01.6</div>
+    <div style="text-align:center;padding:12px 0 4px;font-size:11px;color:var(--ink-soft);opacity:0.5;">v2026.07.01.7</div>
   `;
 
   // Event listeners
