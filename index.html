@@ -906,10 +906,22 @@
         --shadow-sm: 0 2px 8px rgba(0,0,0,0.35);
         --shadow-md: 0 8px 32px rgba(0,0,0,0.45);
       }
+      /* iOS 聚焦時會強制白底，用 -webkit-text-fill-color 確保文字可見 */
       input[type="date"],
       input[type="number"],
       input[type="text"],
-      input[type="tel"] { color-scheme: dark; }
+      input[type="tel"] {
+        color-scheme: dark;
+        -webkit-text-fill-color: var(--ink);
+        color: var(--ink);
+      }
+      input[type="date"]:focus,
+      input[type="number"]:focus,
+      input[type="text"]:focus,
+      input[type="tel"]:focus {
+        -webkit-text-fill-color: #1a1a2e;
+        color: #1a1a2e;
+      }
       .tab-nav { background-color: var(--white); }
     }
     @media (prefers-color-scheme: dark) and (max-width: 600px) {
@@ -1896,7 +1908,7 @@ function buildUI() {
 
     </div><!-- /tab-history -->
 
-    <div style="text-align:center;padding:12px 0 4px;font-size:11px;color:var(--ink-soft);opacity:0.5;">v2026.07.01.10</div>
+    <div style="text-align:center;padding:12px 0 4px;font-size:11px;color:var(--ink-soft);opacity:0.5;">v2026.07.01.11</div>
   `;
 
   // Event listeners
