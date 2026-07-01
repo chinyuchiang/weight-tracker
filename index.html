@@ -1171,6 +1171,14 @@ async function renderCheckinCard() {
           </div>`).join('')}
       </div>`;
   }
+
+  // Update › button visual state
+  const nextBtn = document.getElementById('checkinNextBtn');
+  if (nextBtn) {
+    const atToday = checkinDate >= today();
+    nextBtn.style.opacity = atToday ? '0.3' : '1';
+    nextBtn.style.cursor = atToday ? 'not-allowed' : 'pointer';
+  }
 }
 
 window._toggleCheckin = async (fixedKey, customKeyEnc) => {
@@ -1775,20 +1783,21 @@ function buildUI() {
     renderCheckinCard();
   };
 
+  const fmtDate = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+
   document.getElementById('checkinPrevBtn').onclick = () => {
     const d = new Date(checkinDate + 'T00:00:00');
     d.setDate(d.getDate() - 1);
-    checkinDate = d.toISOString().split('T')[0];
+    checkinDate = fmtDate(d);
     document.getElementById('checkinDateInput').value = checkinDate;
     renderCheckinCard();
   };
 
   document.getElementById('checkinNextBtn').onclick = () => {
+    if (checkinDate >= today()) return;
     const d = new Date(checkinDate + 'T00:00:00');
     d.setDate(d.getDate() + 1);
-    const nxt = d.toISOString().split('T')[0];
-    if (nxt > today()) return;
-    checkinDate = nxt;
+    checkinDate = fmtDate(d);
     document.getElementById('checkinDateInput').value = checkinDate;
     renderCheckinCard();
   };
