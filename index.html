@@ -729,6 +729,35 @@
       gap: 8px;
       margin-top: 4px;
     }
+    .checkin-other-divider {
+      border: none;
+      border-top: 1.5px solid var(--border);
+      margin: 20px 0 16px;
+    }
+    .checkin-other-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .checkin-other-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink-soft);
+    }
+    .checkin-other-pct {
+      font-size: 12px;
+      color: var(--ink-soft);
+      background: var(--mist);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 2px 10px;
+    }
+    .checkin-item.readonly {
+      opacity: 0.7;
+      cursor: default;
+      pointer-events: none;
+    }
     .checkin-add-row input[type="text"] {
       flex: 1;
       height: 44px;
@@ -841,6 +870,12 @@ async function loadData() {
     saveCheckinsLocal();
   } catch {}
 
+  // Load all custom habits
+  USERS.forEach(n => {
+    const raw = localStorage.getItem(`customHabits_${n}`);
+    customHabits[n] = raw ? JSON.parse(raw) : [];
+  });
+
   // Load goals/heights
   USERS.forEach(n => {
     goalWeight[n] = parseFloat(localStorage.getItem(`goal_${n}`) || 0);
@@ -864,22 +899,22 @@ async function deleteEntry(date) {
 }
 
 // ── Checkin ──
-async function loadCheckinsForDate(date) {
-  if (checkinsData[currentUser] && checkinsData[currentUser][date] !== undefined) {
-    return checkinsData[currentUser][date];
+async function loadCheckinsForDate(date, user = currentUser) {
+  if (checkinsData[user] && checkinsData[user][date] !== undefined) {
+    return checkinsData[user][date];
   }
-  const ref = doc(db, 'users', currentUser, 'checkins', date);
+  const ref = doc(db, 'users', user, 'checkins', date);
   try {
     const snap = await getDoc(ref);
-    if (!checkinsData[currentUser]) checkinsData[currentUser] = {};
-    checkinsData[currentUser][date] = snap.exists()
+    if (!checkinsData[user]) checkinsData[user] = {};
+    checkinsData[user][date] = snap.exists()
       ? snap.data()
       : { breakfast: false, lunch: false, dinner: false, exercise: false, sleep: false, custom: {} };
   } catch {
-    if (!checkinsData[currentUser]) checkinsData[currentUser] = {};
-    checkinsData[currentUser][date] = { breakfast: false, lunch: false, dinner: false, exercise: false, sleep: false, custom: {} };
+    if (!checkinsData[user]) checkinsData[user] = {};
+    checkinsData[user][date] = { breakfast: false, lunch: false, dinner: false, exercise: false, sleep: false, custom: {} };
   }
-  return checkinsData[currentUser][date];
+  return checkinsData[user][date];
 }
 
 const CHECKIN_KEY = 'checkinData_v1';
@@ -911,58 +946,68 @@ function renderCheckinChart() {
   if (!canvas) return;
   if (checkinChart) { checkinChart.destroy(); checkinChart = null; }
 
-  const customs = customHabits[currentUser] || [];
   const fixedKeys = ['breakfast','lunch','dinner','exercise','sleep'];
-  const totalItems = fixedKeys.length + customs.length;
+  const colors = { ChinYu: '#007aff', Chen: '#ff3b30' };
 
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - checkinChartRange + 1);
   const cutoffStr = cutoff.toISOString().split('T')[0];
 
-  const userData = checkinsData[currentUser] || {};
-  const dates = Object.keys(userData)
-    .filter(d => checkinChartRange === 9999 || d >= cutoffStr)
-    .sort();
+  const allDatesSet = new Set();
+  USERS.forEach(name => {
+    Object.keys(checkinsData[name] || {}).forEach(d => {
+      if (checkinChartRange === 9999 || d >= cutoffStr) allDatesSet.add(d);
+    });
+  });
+  const dates = Array.from(allDatesSet).sort();
 
   if (!dates.length) {
     canvas.parentElement.innerHTML = '<div style="text-align:center;padding:40px;color:var(--ink-soft);font-size:14px">📭 尚無打卡紀錄</div>';
     return;
   }
 
-  const pctData = dates.map(d => {
-    if (totalItems === 0) return 0;
-    const h = userData[d];
-    const done = fixedKeys.filter(k => h[k]).length
-      + customs.filter(c => h.custom && h.custom[c]).length;
-    return Math.round(done / totalItems * 100);
-  });
-
-  const avgPct = Math.round(pctData.reduce((a,b) => a+b, 0) / pctData.length);
-
-  checkinChart = new Chart(canvas, {
-    type: 'line',
-    data: {
-      labels: dates,
-      datasets: [{
-        label: '打卡完成率',
+  const datasets = USERS.map(name => {
+    const c = colors[name];
+    const customs = customHabits[name] || [];
+    const totalItems = fixedKeys.length + customs.length;
+    const userData = checkinsData[name] || {};
+    const pctData = dates.map(d => {
+      const h = userData[d];
+      if (!h || totalItems === 0) return null;
+      const done = fixedKeys.filter(k => h[k]).length
+        + customs.filter(c => h.custom && h.custom[c]).length;
+      return Math.round(done / totalItems * 100);
+    });
+    const validPcts = pctData.filter(v => v !== null);
+    const avg = validPcts.length ? Math.round(validPcts.reduce((a,b) => a+b, 0) / validPcts.length) : 0;
+    return [
+      {
+        label: name,
         data: pctData,
-        borderColor: '#34c759',
-        backgroundColor: 'rgba(52,199,89,0.08)',
+        borderColor: c,
+        backgroundColor: c + '12',
         tension: 0.35,
-        fill: true,
+        spanGaps: true,
+        fill: false,
         pointRadius: 3,
         pointHoverRadius: 6,
-        pointBackgroundColor: pctData.map(v => v === 100 ? '#34c759' : v >= 60 ? '#ffb347' : '#ff6b6b'),
-      }, {
-        label: `平均 ${avgPct}%`,
-        data: dates.map(() => avgPct),
-        borderColor: 'rgba(52,199,89,0.35)',
+      },
+      {
+        label: `${name} 平均 ${avg}%`,
+        data: dates.map(() => avg),
+        borderColor: c + '55',
         borderDash: [6, 4],
         pointRadius: 0,
         tension: 0,
+        spanGaps: true,
         fill: false,
-      }]
-    },
+      }
+    ];
+  }).flat();
+
+  checkinChart = new Chart(canvas, {
+    type: 'line',
+    data: { labels: dates, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -971,9 +1016,7 @@ function renderCheckinChart() {
         legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 12 } } },
         tooltip: {
           callbacks: {
-            label: ctx => ctx.dataset.label.startsWith('平均')
-              ? `平均完成率：${avgPct}%`
-              : `完成率：${ctx.parsed.y}%`
+            label: ctx => ctx.parsed.y !== null ? `${ctx.dataset.label.split(' ')[0]}: ${ctx.parsed.y}%` : null
           }
         }
       },
@@ -1064,6 +1107,39 @@ async function renderCheckinCard() {
         }).join('')
       }</div>`;
     }
+  }
+
+  // 對方的打卡狀態（唯讀）
+  const otherSection = document.getElementById('otherCheckinSection');
+  if (otherSection) {
+    const otherUser = USERS.find(u => u !== currentUser);
+    const otherHabits = await loadCheckinsForDate(checkinDate, otherUser);
+    const otherCustoms = customHabits[otherUser] || [];
+    const otherColor = otherUser === 'ChinYu' ? 'var(--user-a)' : 'var(--user-b)';
+    const otherTotal = fixedItems.length + otherCustoms.length;
+    const otherDone = fixedItems.filter(f => otherHabits[f.key]).length
+      + otherCustoms.filter(c => otherHabits.custom && otherHabits.custom[c]).length;
+    const otherPct = otherTotal > 0 ? Math.round(otherDone / otherTotal * 100) : 0;
+
+    const allItems = [
+      ...fixedItems.map(f => ({ icon: f.icon, label: f.label, checked: !!otherHabits[f.key] })),
+      ...otherCustoms.map(c => ({ icon: '⭐', label: c, checked: !!(otherHabits.custom && otherHabits.custom[c]) })),
+    ];
+
+    otherSection.innerHTML = `
+      <hr class="checkin-other-divider" />
+      <div class="checkin-other-header">
+        <span class="checkin-other-title" style="color:${otherColor}">👤 ${otherUser} 的今日打卡</span>
+        <span class="checkin-other-pct">${otherDone} / ${otherTotal} 完成（${otherPct}%）</span>
+      </div>
+      <div class="checkin-grid">
+        ${allItems.map(item => `
+          <div class="checkin-item readonly ${item.checked ? 'checked' : ''}">
+            <input type="checkbox" ${item.checked ? 'checked' : ''} readonly />
+            <span class="checkin-icon">${item.icon}</span>
+            <span class="checkin-label">${item.label}</span>
+          </div>`).join('')}
+      </div>`;
   }
 }
 
@@ -1450,6 +1526,7 @@ function buildUI() {
         <input type="text" id="newHabitInput" placeholder="輸入自訂項目名稱…" maxlength="20" />
         <button class="btn btn-ghost" style="height:44px;padding:0 16px;font-size:14px;white-space:nowrap" id="addHabitBtn">＋ 新增</button>
       </div>
+      <div id="otherCheckinSection"></div>
     </div>
 
     <!-- Checkin Chart Card -->
