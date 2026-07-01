@@ -1061,13 +1061,16 @@ window._toggleCheckin = async (fixedKey, customKeyEnc) => {
   }
   await saveCheckinToFirestore(checkinDate);
   renderCheckinCard();
-  // 全部完成時慶祝
   const h2 = checkinsData[currentUser][checkinDate];
   const customs2 = customHabits[currentUser] || [];
   const fixedKeys = ['breakfast','lunch','dinner','exercise','sleep'];
   const total2 = fixedKeys.length + customs2.length;
   const done2 = fixedKeys.filter(k => h2[k]).length + customs2.filter(c => h2.custom && h2.custom[c]).length;
-  if (total2 > 0 && done2 === total2) toast('🎉 今日打卡全部完成！太棒了！', 3000);
+  if (total2 > 0 && done2 === total2) {
+    toast('🎉 今日打卡全部完成！太棒了！', 3000);
+  } else {
+    toast('✓ 已儲存', 1200);
+  }
 };
 
 window._deleteCustomHabit = (enc) => {
@@ -1213,6 +1216,8 @@ function renderChart() {
       const g = perUser[name][k];
       return (g && g.count > 0) ? (g.sum / g.count).toFixed(1) : null;
     });
+    const isUnhealthy = keys.map(k => !!(perUser[name][k] && perUser[name][k].unhealthy.length > 0));
+
     const points = [{
       label: name,
       data: lineData,
@@ -1221,19 +1226,10 @@ function renderChart() {
       tension: 0.35,
       spanGaps: true,
       fill: false,
-      pointRadius: 3,
-      pointHoverRadius: 6,
-    }, {
-      label: `${name} ☠️`,
-      data: keys.map(k => {
-        const g = perUser[name][k];
-        return (g && g.unhealthy.length) ? (g.unhealthy.reduce((a,b)=>a+b,0)/g.unhealthy.length).toFixed(1) : null;
-      }),
-      borderColor: '#af52de',
-      backgroundColor: '#af52de',
-      pointRadius: 7,
-      pointStyle: 'star',
-      showLine: false,
+      pointRadius: isUnhealthy.map(u => u ? 7 : 3),
+      pointHoverRadius: isUnhealthy.map(u => u ? 9 : 6),
+      pointBackgroundColor: isUnhealthy.map(u => u ? '#af52de' : c),
+      pointStyle: isUnhealthy.map(u => u ? 'star' : 'circle'),
     }];
 
     // Goal line
@@ -1252,14 +1248,9 @@ function renderChart() {
     return points;
   });
 
-  const filteredDatasets = datasets.filter(ds => {
-    if (ds.label && ds.label.includes('☠️')) return ds.data.some(v => v !== null);
-    return true;
-  });
-
   chart = new Chart(ctx, {
     type: 'line',
-    data: { labels: keys, datasets: filteredDatasets },
+    data: { labels: keys, datasets },
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -1268,7 +1259,12 @@ function renderChart() {
         legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 12 } } },
         tooltip: {
           callbacks: {
-            label: ctx => ctx.parsed.y !== null ? `${ctx.dataset.label}: ${ctx.parsed.y} kg` : null
+            label: ctx => {
+              if (ctx.parsed.y === null) return null;
+              const g = perUser[ctx.dataset.label] && perUser[ctx.dataset.label][keys[ctx.dataIndex]];
+              const unhealthy = g && g.unhealthy.length > 0;
+              return `${ctx.dataset.label}: ${ctx.parsed.y} kg${unhealthy ? ' ☠️' : ''}`;
+            }
           }
         }
       },
